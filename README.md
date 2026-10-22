@@ -50,6 +50,54 @@ umount /view
 rmmod prefixfs
 ```
 
+## Run a command
+
+`run-prefixfs.py` is a general-purpose launcher. It does not depend on nginx
+or Test::Nginx. It defaults to the caller's current directory; provide
+`--source` to select a different directory. Specify literal directory-name
+prefixes with repeated `--prefix` options or `PREFIXFS_PREFIXES` (there are no
+implicit prefixes):
+
+```
+python3 /path/to/prefixfs/run-prefixfs.py \
+    --source "$PWD" --prefix cache_ --prefix build_ -- make
+
+PREFIXFS_PREFIXES=cache_,build_ python3 /path/to/prefixfs/run-prefixfs.py -- make
+```
+
+The launcher checks the matching module and loads it if necessary. Its module
+path defaults to `prefixfs.ko` beside the script; `PREFIXFS_KO` overrides that
+file and `PREFIXFS_HOME` overrides the project directory. Loading and mounting
+require root or passwordless sudo. Python 3, kmod, util-linux (`unshare` and
+`mount`), coreutils (`stat`) and bubblewrap are required. The module is left
+loaded so concurrent callers can reuse it. `--check` only checks dependencies
+and module availability; no command or mount is started.
+
+Mounts are private to the launched command and its children. Other processes
+and other directories keep their original view, even with matching names.
+The command runs with the caller's UID, GID, groups, working directory and
+environment. `LD_PRELOAD` and `LD_LIBRARY_PATH` are restored only after mount
+and process setup; `--preload` can supply a preload library explicitly. Wrapped
+commands are non-interactive (stdin is closed).
+
+Backing data is retained by default, with its location printed on exit.
+`--cleanup` removes it after success; failures and interruptions always retain
+it. `--tmpdir` chooses an existing tmpfs parent (default `/tmp`). The caller
+controls the cleanup policy explicitly; application-specific environment
+variables do not change it.
+
+```
+python3 /path/to/prefixfs/run-prefixfs.py \
+    --source /path/to/project --prefix scratch_ --cleanup -- ./run-tests.sh
+```
+
+`make unit-test` runs launcher unit checks without loading or mounting the
+module. To also exercise the launcher on the host, opt in explicitly:
+
+```
+PREFIXFS_HOST_TESTS=1 make unit-test
+```
+
 ## Scope and constraints
 
 - Mounting requires administrative privileges in the initial user namespace.
